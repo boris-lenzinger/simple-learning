@@ -64,7 +64,9 @@ func (p InterrogationParameters) GetOutputStream() io.Writer {
 	return p.out
 }
 
-func (p InterrogationParameters) GetTopics() []string {
+// GetListOfTopics returns a string array containing all the topics selected by
+// the end user.
+func (p InterrogationParameters) GetListOfTopics() []string {
 	return strings.Split(p.topics, ",")
 }
 
@@ -106,10 +108,6 @@ func Parse(args ...string) (InterrogationParameters, error) {
 		}
 	}
 	return p, nil
-}
-
-func (p InterrogationParameters) GetListOfTopics() []string {
-	return strings.Split(p.topics, ",")
 }
 
 // GetCount returns the number of entries for the questions.
@@ -244,7 +242,6 @@ func (topic Topic) BuildQuestionsSet(ids ...string) QuestionsAnswers {
 
 // AskQuestions will question the user on the set of questions.
 func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
-	// Interrogations en ordre aleatoire
 	r := bufio.NewReader(p.in)
 	i := 0
 	nbOfQuestions := qa.GetCount()

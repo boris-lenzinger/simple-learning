@@ -59,7 +59,7 @@ where:
 		}
 		return
 	}
-	qa := topic.BuildQuestionsSet(p.GetTopics()[:]...)
+	qa := topic.BuildQuestionsSet(p.GetListOfTopics()[:]...)
 
 	lib.AskQuestions(qa, p)
 

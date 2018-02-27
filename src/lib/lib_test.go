@@ -83,6 +83,48 @@ func TestParsingNonEmptyParameters(t *testing.T) {
 	}
 }
 
+func TestParsingSelectedTopics(t *testing.T) {
+	selected := "Topic 1,Topic 2"
+	arguments := []string{"-l", selected}
+	p, err := Parse(arguments[:]...)
+	if err != nil {
+		t.Errorf("Parsing detects list of selected topics as an error")
+	}
+	if p.topics != selected {
+		t.Errorf("Parsing failed to set the list of selected topics to the string that was passed as parameter.")
+	}
+	listAsArray := p.GetListOfTopics()
+	if len(listAsArray) != 2 {
+		t.Errorf("Retrieving the list of selected topics should have reported 2 elements but we received %d\n", len(listAsArray))
+	}
+}
+
+// TestParsingSummaryMode checks that the feature about the parameter summary works fine.
+func TestParsingSummaryMode(t *testing.T) {
+	arguments := []string{"-s"}
+	p, err := Parse(arguments[:]...)
+	if err != nil {
+		t.Errorf("Parsing detects summary mode as an error")
+	}
+	if p.mode != summary {
+		t.Errorf("Parsing does not set the mode to summary when the option is set")
+	}
+	if !p.IsSummaryMode() {
+		t.Errorf("Parsing does set mode to summary but the method IsSummaryMode fails to report it.")
+	}
+}
+
+func TestDetectingLinearMode(t *testing.T) {
+	arguments := []string{"-m", "linear"}
+	p, err := Parse(arguments[:]...)
+	if err != nil {
+		t.Errorf("Parsing detects linear mode as an error")
+	}
+	if p.mode != linear {
+		t.Errorf("Parsing does not set the mode to linear when the option is set")
+	}
+}
+
 func TestErrorParsing(t *testing.T) {
 	arguments := []string{"-t", "15aaa"}
 	_, err := Parse(arguments[:]...)
