@@ -43,6 +43,7 @@ type InterrogationMode int
 const (
 	linear InterrogationMode = iota
 	random
+	summary
 )
 
 type InterrogationParameters struct {
@@ -51,6 +52,20 @@ type InterrogationParameters struct {
 	mode        InterrogationMode // propose to have the questions in the same order as  they are written or random. Default is random.
 	in          io.Reader         // this channel is the way to send text to the engine. Default is to use io.Stdin but for testing you can supply whatever you want.
 	out         io.Writer         // The place where the questions are written to
+	topics      string            // the list of selected topics chosen for the questioning
+}
+
+// IsSummaryMode tells if the parameters will require to have a summary of the topics.
+func (p InterrogationParameters) IsSummaryMode() bool {
+	return p.mode == summary
+}
+
+func (p InterrogationParameters) GetOutputStream() io.Writer {
+	return p.out
+}
+
+func (p InterrogationParameters) GetTopics() []string {
+	return strings.Split(p.topics, ",")
 }
 
 // NewQA builds an empty set of questions/answers.
@@ -67,6 +82,7 @@ func Parse(args ...string) (InterrogationParameters, error) {
 		mode:        random,
 		in:          os.Stdin,
 		out:         os.Stdout,
+		topics:      "",
 	}
 	for i, opt := range args {
 		switch opt {
@@ -83,9 +99,17 @@ func Parse(args ...string) (InterrogationParameters, error) {
 			if args[i+1] == "linear" {
 				p.mode = linear
 			}
+		case "-s":
+			p.mode = summary
+		case "-l":
+			p.topics = args[i+1]
 		}
 	}
 	return p, nil
+}
+
+func (p InterrogationParameters) GetListOfTopics() []string {
+	return strings.Split(p.topics, ",")
 }
 
 // GetCount returns the number of entries for the questions.
@@ -133,7 +157,7 @@ func (topic Topic) GetCount() int {
 func (topic Topic) GetSubTopics() []string {
 	subtopics := []string{}
 	if topic.GetCount() != 0 {
-		subtopics = make([]string, len(topic.list))
+		subtopics = make([]string, 0, len(topic.list))
 		for id := range topic.list {
 			subtopics = append(subtopics, id)
 		}
@@ -204,11 +228,8 @@ func (topic Topic) BuildQuestionsSet(ids ...string) QuestionsAnswers {
 	qa := NewQA()
 	var qaForId QuestionsAnswers
 	for _, id := range ids {
-		fmt.Printf("L'element: %v\n", topic.GetSection(id))
 		qaForId = topic.GetSection(id)
 		qa.Concatenate(qaForId)
-		fmt.Printf("Elements dans qaForId: %d\n", qaForId.GetCount())
-		fmt.Printf("Count of elements: %d\n", qa.GetCount())
 	}
 	if len(ids) == 0 {
 		// we must embed everything

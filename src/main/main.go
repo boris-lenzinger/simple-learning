@@ -19,6 +19,8 @@ where:
 			 simply have to wait for a given time. See -t for details about time.
 	* -t : the time to wait between 2 questions. Default is 2 seconds. The time you set is
 	       in milliseconds.
+	* -s : ask to show the different topics of  the file, no more. Execution stops after this.
+	* -l : ask to be questionned only on the topics that are listed here. The topics must be separated with a comma.
 `)
 		os.Exit(1)
 	}
@@ -42,7 +44,22 @@ where:
 		QaSep:         ";",
 	}
 	topic := lib.ParseTopic(file, tpp)
-	qa := topic.BuildQuestionsSet()
+
+	if p.IsSummaryMode() {
+		list := topic.GetSubTopics()
+		out := p.GetOutputStream()
+		if len(list) == 0 {
+			fmt.Fprintf(out, "No topic found in this file")
+			return
+		}
+		fmt.Fprintln(out, "List of topics:")
+		fmt.Fprintln(out, "===============")
+		for i := 0; i < len(list); i++ {
+			fmt.Fprintf(out, "  * %s\n", list[i])
+		}
+		return
+	}
+	qa := topic.BuildQuestionsSet(p.GetTopics()[:]...)
 
 	lib.AskQuestions(qa, p)
 
