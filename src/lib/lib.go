@@ -49,7 +49,8 @@ type InterrogationParameters struct {
 	interactive bool
 	wait        time.Duration
 	mode        InterrogationMode // propose to have the questions in the same order as  they are written or random. Default is random.
-	control     io.Reader         // this channel is the way to send text to the engine. Default is to use io.Stdin but for testing you can supply whatever you want.
+	in          io.Reader         // this channel is the way to send text to the engine. Default is to use io.Stdin but for testing you can supply whatever you want.
+	out         io.Writer         // The place where the questions are written to
 }
 
 // NewQA builds an empty set of questions/answers.
@@ -64,7 +65,8 @@ func Parse(args ...string) (InterrogationParameters, error) {
 		interactive: false,
 		wait:        2 * time.Second,
 		mode:        random,
-		control:     os.Stdin,
+		in:          os.Stdin,
+		out:         os.Stdout,
 	}
 	for i, opt := range args {
 		switch opt {
@@ -222,21 +224,21 @@ func (topic Topic) BuildQuestionsSet(ids ...string) QuestionsAnswers {
 // AskQuestions will question the user on the set of questions.
 func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
 	// Interrogations en ordre aleatoire
-	r := bufio.NewReader(os.Stdin)
+	r := bufio.NewReader(p.in)
 	i := 0
 	nbOfQuestions := qa.GetCount()
 	for {
 		if p.mode == random {
 			i = int(rand.Int31n(int32(qa.GetCount())))
 		}
-		fmt.Printf("%s", qa.questions[i])
+		fmt.Fprintf(p.out, "%s", qa.questions[i])
 		if !p.interactive {
 			time.Sleep(p.wait)
 		} else {
 			r.ReadLine()
 		}
-		fmt.Printf("     --> %s\n", qa.answers[i])
-		fmt.Println("--------------------------")
+		fmt.Fprintf(p.out, "     --> %s\n", qa.answers[i])
+		fmt.Fprintln(p.out, "--------------------------")
 		if p.mode == linear {
 			i = (i + 1) % nbOfQuestions
 		}
