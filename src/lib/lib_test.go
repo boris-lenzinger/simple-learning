@@ -53,7 +53,7 @@ func TestNewTopic(t *testing.T) {
 }
 
 // TestParsing validates the parsing of the command line.
-func TestParsing(t *testing.T) {
+func TestParsingEmptyParameters(t *testing.T) {
 	p, err := Parse()
 	if err != nil {
 		t.Errorf("Parsing should not fail with empty parameters")
@@ -63,6 +63,31 @@ func TestParsing(t *testing.T) {
 	}
 	if p.wait != 2*time.Second {
 		t.Errorf("Default is to wait for 2 seconds. But the current value is %v.\n", p.wait)
+	}
+}
+
+// TestParsingNonEmptyParameters checks that passing an interactive mode and a different
+// time are supported.
+func TestParsingNonEmptyParameters(t *testing.T) {
+	wt := 1500
+	arguments := []string{"-i", "-t", strconv.Itoa(wt)}
+	p, err := Parse(arguments[:]...)
+	if err != nil {
+		t.Errorf("A valid list of parameters must not trigger a parsing error.")
+	}
+	if !p.interactive {
+		t.Errorf("The parameter -i was not detected.")
+	}
+	if p.wait != time.Duration(wt)*time.Millisecond {
+		t.Errorf("Failed to detect wait time as %dms. Found %v instead.\n", wt, p.wait)
+	}
+}
+
+func TestErrorParsing(t *testing.T) {
+	arguments := []string{"-t", "15aaa"}
+	_, err := Parse(arguments[:]...)
+	if err == nil {
+		t.Errorf("We do not detect when a time is not an integer.")
 	}
 }
 
