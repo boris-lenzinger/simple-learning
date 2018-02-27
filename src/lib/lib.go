@@ -146,9 +146,11 @@ func ParseTopic(r io.Reader, p TopicParsingParameters) Topic {
 					sectionId = strings.TrimPrefix(input, p.TopicAnnounce)
 					qaSection = topic.GetSection(sectionId)
 				}
-			case 2:
-				// Question is in split[0] while answer in in split[1]
-				qaSection.AddEntry(split[0], split[1])
+			default:
+				// Question is in split[0] while answer in in split[1]. It may happen
+				// the answer contains the separator so we have to join the different
+				// elements.
+				qaSection.AddEntry(split[0], strings.Join(split[1:], p.QaSep))
 				topic.SetSection(sectionId, qaSection)
 			}
 		}
