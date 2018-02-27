@@ -37,11 +37,22 @@ type TopicParsingParameters struct {
 	// first one is considered as the separator.
 	QaSep string
 }
+
+type InterrogationMode int
+
+const (
+	linear InterrogationMode = iota
+	random
+)
+
 type InterrogationParameters struct {
 	interactive bool
 	wait        time.Duration
+	mode        InterrogationMode // propose to have the questions in the same order as  they are written or random. Default is random.
+	control     io.Reader         // this channel is the way to send text to the engine. Default is to use io.Stdin but for testing you can supply whatever you want.
 }
 
+// NewQA builds an empty set of questions/answers.
 func NewQA() QuestionsAnswers {
 	return QuestionsAnswers{}
 }
@@ -52,6 +63,8 @@ func Parse(args ...string) (InterrogationParameters, error) {
 	p := InterrogationParameters{
 		interactive: false,
 		wait:        2 * time.Second,
+		mode:        random,
+		control:     os.Stdin,
 	}
 	for i, opt := range args {
 		switch opt {
@@ -63,6 +76,11 @@ func Parse(args ...string) (InterrogationParameters, error) {
 				return p, fmt.Errorf("The time you set (%s) is not an integer. Please set the time in milliseconds.", args[i+1])
 			}
 			p.wait = time.Duration(value) * time.Millisecond
+		case "-m":
+			// The other mode is the default so we have nothing to do.
+			if args[i+1] == "linear" {
+				p.mode = linear
+			}
 		}
 	}
 	return p, nil
@@ -205,8 +223,12 @@ func (topic Topic) BuildQuestionsSet(ids ...string) QuestionsAnswers {
 func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
 	// Interrogations en ordre aleatoire
 	r := bufio.NewReader(os.Stdin)
+	i := 0
+	nbOfQuestions := qa.GetCount()
 	for {
-		i := rand.Int31n(int32(qa.GetCount()))
+		if p.mode == random {
+			i = int(rand.Int31n(int32(qa.GetCount())))
+		}
 		fmt.Printf("%s", qa.questions[i])
 		if !p.interactive {
 			time.Sleep(p.wait)
@@ -215,5 +237,8 @@ func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
 		}
 		fmt.Printf("     --> %s\n", qa.answers[i])
 		fmt.Println("--------------------------")
+		if p.mode == linear {
+			i = (i + 1) % nbOfQuestions
+		}
 	}
 }
