@@ -48,7 +48,7 @@ where:
 
 	out := p.GetOutputStream()
 	if p.IsSummaryMode() {
-		list := topic.GetSubTopics()
+		list := topic.GetSubsectionsName()
 		if len(list) == 0 {
 			fmt.Fprintf(out, "No topic found in this file")
 			return
@@ -61,7 +61,7 @@ where:
 		return
 	}
 
-	qa := topic.BuildQuestionsSet(p.GetListOfTopics()[:]...)
+	qa := topic.BuildQuestionsSet(p.GetListOfSubsections()[:]...)
 
 	lib.AskQuestions(qa, p)
 

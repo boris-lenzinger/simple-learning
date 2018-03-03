@@ -1,7 +1,10 @@
 package lib
 
 import (
+	"bufio"
 	"fmt"
+	"io"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -46,7 +49,7 @@ func TestNewTopic(t *testing.T) {
 	if topic.list == nil {
 		t.Errorf("A new topic should not have its list empty.")
 	}
-	count := topic.GetCount()
+	count := topic.GetSubsectionsCount()
 	if count != 0 {
 		t.Errorf("Was expecting 0 but received a count of %d\n", count)
 	}
@@ -90,10 +93,10 @@ func TestParsingSelectedTopics(t *testing.T) {
 	if err != nil {
 		t.Errorf("Parsing detects list of selected topics as an error")
 	}
-	if p.topics != selected {
+	if p.subsections != selected {
 		t.Errorf("Parsing failed to set the list of selected topics to the string that was passed as parameter.")
 	}
-	listAsArray := p.GetListOfTopics()
+	listAsArray := p.GetListOfSubsections()
 	if len(listAsArray) != 2 {
 		t.Errorf("Retrieving the list of selected topics should have reported 2 elements but we received %d\n", len(listAsArray))
 	}
@@ -133,8 +136,7 @@ func TestErrorParsing(t *testing.T) {
 	}
 }
 
-// Testing the way to get the data into the topic data structure.
-func TestParseStream(t *testing.T) {
+func getSampleCsvAsStream() string {
 	content := `
 ### Lesson 1
 1_Question 1;1_Answer 1
@@ -149,21 +151,23 @@ func TestParseStream(t *testing.T) {
 3_Question 3;3_Answer 3
 	`
 
-	r := strings.NewReader(content)
+	return content
+}
+
+// Testing the way to get the data into the topic data structure.
+func TestParseStream(t *testing.T) {
+
+	r := strings.NewReader(getSampleCsvAsStream())
 	p := TopicParsingParameters{
 		TopicAnnounce: "### Lesson ",
 		QaSep:         ";",
 	}
 
 	topic := ParseTopic(r, p)
-	count := topic.GetCount()
+	count := topic.GetSubsectionsCount()
 	if count != 3 {
 		t.Errorf("After parsing the stream should result in 3 subtopics. We have counted %d\n", count)
 	}
-
-	fmt.Println("=============")
-	fmt.Printf("Topic %v\n", topic)
-	fmt.Println("=============")
 
 	qa := topic.BuildQuestionsSet()
 	count = qa.GetCount()
@@ -179,4 +183,64 @@ func TestParseStream(t *testing.T) {
 		}
 	}
 
+}
+
+func TestAskQuestions(t *testing.T) {
+
+	r := strings.NewReader(getSampleCsvAsStream())
+	tpp := TopicParsingParameters{
+		TopicAnnounce: "### Lesson ",
+		QaSep:         ";",
+	}
+	topic := ParseTopic(r, tpp)
+
+	pr, pw := io.Pipe()
+	ip := InterrogationParameters{
+		interactive: false,
+		wait:        1 * time.Millisecond,
+		mode:        linear,
+		out:         pw,
+		limit:       10,
+	}
+
+	questionsSet := topic.BuildQuestionsSet()
+	go func() {
+		defer pw.Close()
+		AskQuestions(questionsSet, ip)
+	}()
+
+	fmt.Println("    ****************")
+	fmt.Println("Analyzing output now...")
+	fmt.Println("    ****************")
+
+	s := bufio.NewScanner(pr)
+
+	announcement, _ := regexp.Compile("^" + tpp.TopicAnnounce)
+	emptyLine, _ := regexp.Compile("^\\s*$")
+	loop, _ := regexp.Compile("^Loop\\s{1,}\\([0-9]{1,}/[0-9]{1,}\\)$")
+	separator, _ := regexp.Compile("^-{1,}")
+	questionsCount := questionsSet.GetCount()
+	i := 0
+	var (
+		isAnnounce  bool
+		isEmpty     bool
+		isLoop      bool
+		isSeparator bool
+		expected    string
+		computed    string
+	)
+	for s.Scan() {
+		isAnnounce = announcement.MatchString(s.Text())
+		isEmpty = emptyLine.MatchString(s.Text())
+		isLoop = loop.MatchString(s.Text())
+		isSeparator = separator.MatchString(s.Text())
+		if !isAnnounce && !isEmpty && !isLoop && !isSeparator {
+			expected = questionsSet.questions[i] + "     --> " + questionsSet.answers[i]
+			computed = s.Text()
+			if computed != expected {
+				t.Errorf("Check of answers failed. We were expected '%s' but received '%s'\n", expected, computed)
+			}
+			i = (i + 1) % questionsCount
+		}
+	}
 }

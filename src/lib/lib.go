@@ -21,6 +21,8 @@ type QuestionsAnswers struct {
 	answers   []string
 }
 
+// Topic represents the list of subsections of the file with the questions
+// attached for that section.
 type Topic struct {
 	list map[string]QuestionsAnswers
 }
@@ -38,39 +40,41 @@ type TopicParsingParameters struct {
 	QaSep string
 }
 
-type InterrogationMode int
+type interrogationMode int
 
 const (
-	linear InterrogationMode = iota
-	random
-	summary
+	linear  interrogationMode = iota // will ask questions in the same order as the file
+	random                           // will ask questions in a random order
+	summary                          // ask to show the list of subsections
 )
 
 type InterrogationParameters struct {
 	interactive bool
-	wait        time.Duration
-	mode        InterrogationMode // propose to have the questions in the same order as  they are written or random. Default is random.
-	in          io.Reader         // this channel is the way to send text to the engine. Default is to use io.Stdin but for testing you can supply whatever you want.
+	wait        time.Duration     // Default is to wait 2 seconds
+	mode        interrogationMode // Default is random.
+	in          io.Reader         // Default is to use io.Stdin. Allows to send command to the engine
 	out         io.Writer         // The place where the questions are written to
-	topics      string            // the list of selected topics chosen for the questioning
+	subsections string            // the list of selected subsections chosen for the questioning
+	limit       int               // Limit is the number of times the list is repeated during interrogation. Default is 10
 }
 
-// IsSummaryMode tells if the parameters will require to have a summary of the topics.
+// IsSummaryMode tells if the parameters require to have a summary of the subsections.
 func (p InterrogationParameters) IsSummaryMode() bool {
 	return p.mode == summary
 }
 
+// GetOutputStream gets the Writer where questions will be written to.
 func (p InterrogationParameters) GetOutputStream() io.Writer {
 	return p.out
 }
 
-// GetListOfTopics returns a string array containing all the topics selected by
+// GetListOfSubsections returns a string array containing all the subsections selected by
 // the end user.
-func (p InterrogationParameters) GetListOfTopics() []string {
-	if len(p.topics) == 0 {
+func (p InterrogationParameters) GetListOfSubsections() []string {
+	if len(p.subsections) == 0 {
 		return nil
 	}
-	return strings.Split(p.topics, ",")
+	return strings.Split(p.subsections, ",")
 }
 
 // NewQA builds an empty set of questions/answers.
@@ -87,7 +91,8 @@ func Parse(args ...string) (InterrogationParameters, error) {
 		mode:        random,
 		in:          os.Stdin,
 		out:         os.Stdout,
-		topics:      "",
+		subsections: "",
+		limit:       10,
 	}
 	for i, opt := range args {
 		switch opt {
@@ -107,7 +112,7 @@ func Parse(args ...string) (InterrogationParameters, error) {
 		case "-s":
 			p.mode = summary
 		case "-l":
-			p.topics = args[i+1]
+			p.subsections = args[i+1]
 		}
 	}
 	return p, nil
@@ -132,7 +137,7 @@ func NewTopic() Topic {
 // GetSection returns the current list of questions for a given topic id.
 // If there is no associated questions and answers for this topic id, it
 // returns a new structure.
-func (topic *Topic) GetSection(id string) QuestionsAnswers {
+func (topic *Topic) GetSubsection(id string) QuestionsAnswers {
 	qa := topic.list[id]
 	if qa.questions == nil {
 		qa = NewQA()
@@ -141,12 +146,12 @@ func (topic *Topic) GetSection(id string) QuestionsAnswers {
 	return qa
 }
 
-func (topic *Topic) SetSection(id string, qa QuestionsAnswers) {
+func (topic *Topic) SetSubsection(id string, qa QuestionsAnswers) {
 	topic.list[id] = qa
 }
 
 // GetCount returns the number of subtopics.
-func (topic Topic) GetCount() int {
+func (topic Topic) GetSubsectionsCount() int {
 	size := 0
 	if topic.list != nil {
 		size = len(topic.list)
@@ -155,15 +160,15 @@ func (topic Topic) GetCount() int {
 }
 
 // GetSubTopics returns the list of subtopics that have been imported.
-func (topic Topic) GetSubTopics() []string {
-	subtopics := []string{}
-	if topic.GetCount() != 0 {
-		subtopics = make([]string, 0, len(topic.list))
+func (topic Topic) GetSubsectionsName() []string {
+	subsections := []string{}
+	if topic.GetSubsectionsCount() != 0 {
+		subsections = make([]string, 0, len(topic.list))
 		for id := range topic.list {
-			subtopics = append(subtopics, id)
+			subsections = append(subsections, id)
 		}
 	}
-	return subtopics
+	return subsections
 }
 
 // ParseQuestions is reading the data source and transforms it to a topic
@@ -178,8 +183,8 @@ func ParseTopic(r io.Reader, p TopicParsingParameters) Topic {
 	}
 
 	topic := NewTopic()
-	var sectionId string
-	qaSection := NewQA()
+	var subsectionId string
+	qaSubsection := NewQA()
 	for i := 0; i < len(lines); i++ {
 		input := lines[i]
 		// Ignore empty lines
@@ -188,15 +193,15 @@ func ParseTopic(r io.Reader, p TopicParsingParameters) Topic {
 			switch len(split) {
 			case 1:
 				if strings.HasPrefix(input, p.TopicAnnounce) {
-					sectionId = strings.TrimPrefix(input, p.TopicAnnounce)
-					qaSection = topic.GetSection(sectionId)
+					subsectionId = strings.TrimPrefix(input, p.TopicAnnounce)
+					qaSubsection = topic.GetSubsection(subsectionId)
 				}
 			default:
 				// Question is in split[0] while answer in in split[1]. It may happen
 				// the answer contains the separator so we have to join the different
 				// elements.
-				qaSection.AddEntry(split[0], strings.Join(split[1:], p.QaSep))
-				topic.SetSection(sectionId, qaSection)
+				qaSubsection.AddEntry(split[0], strings.Join(split[1:], p.QaSep))
+				topic.SetSubsection(subsectionId, qaSubsection)
 			}
 		}
 	}
@@ -228,13 +233,13 @@ func (qa *QuestionsAnswers) Concatenate(qaToAdd ...QuestionsAnswers) {
 func (topic Topic) BuildQuestionsSet(ids ...string) QuestionsAnswers {
 	qa := NewQA()
 	var qaForId QuestionsAnswers
-	var topics = ids
-	if len(topics) == 0 {
-		fmt.Println("     *** You supplied no topics, we take them all ***")
-		topics = topic.GetSubTopics()
+	var subsections = ids
+	if len(subsections) == 0 {
+		fmt.Println("     *** You supplied no subsection, we take them all ***")
+		subsections = topic.GetSubsectionsName()
 	}
-	for _, id := range topics {
-		qaForId = topic.GetSection(id)
+	for _, id := range subsections {
+		qaForId = topic.GetSubsection(id)
 		qa.Concatenate(qaForId)
 	}
 
@@ -244,23 +249,35 @@ func (topic Topic) BuildQuestionsSet(ids ...string) QuestionsAnswers {
 // AskQuestions will question the user on the set of questions.
 func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
 	r := bufio.NewReader(p.in)
-	i := 0
 	nbOfQuestions := qa.GetCount()
 	fmt.Printf("Nb of questions: %d\n", nbOfQuestions)
+	fullLoop := 0
+	i := 0
+	j := 0
+	out := p.GetOutputStream()
 	for {
+		if j%nbOfQuestions == 0 {
+			fullLoop++
+			if fullLoop > p.limit {
+				fmt.Printf("Limite atteinte. On sort. Nombre de boucles: %d et limite: %d\n", fullLoop, p.limit)
+				break
+			}
+			fmt.Fprintf(out, "Loop (%d/%d)\n", fullLoop, p.limit)
+		}
 		if p.mode == random {
 			i = int(rand.Int31n(int32(nbOfQuestions)))
 		}
-		fmt.Fprintf(p.out, "%s", qa.questions[i])
+		fmt.Fprintf(out, "%s", qa.questions[i])
 		if !p.interactive {
 			time.Sleep(p.wait)
 		} else {
 			r.ReadLine()
 		}
-		fmt.Fprintf(p.out, "     --> %s\n", qa.answers[i])
+		fmt.Fprintf(out, "     --> %s\n", qa.answers[i])
 		fmt.Fprintln(p.out, "--------------------------")
 		if p.mode == linear {
 			i = (i + 1) % nbOfQuestions
 		}
+		j++
 	}
 }
