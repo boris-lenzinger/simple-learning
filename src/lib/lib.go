@@ -67,6 +67,9 @@ func (p InterrogationParameters) GetOutputStream() io.Writer {
 // GetListOfTopics returns a string array containing all the topics selected by
 // the end user.
 func (p InterrogationParameters) GetListOfTopics() []string {
+	if len(p.topics) == 0 {
+		return nil
+	}
 	return strings.Split(p.topics, ",")
 }
 
@@ -225,16 +228,14 @@ func (qa *QuestionsAnswers) Concatenate(qaToAdd ...QuestionsAnswers) {
 func (topic Topic) BuildQuestionsSet(ids ...string) QuestionsAnswers {
 	qa := NewQA()
 	var qaForId QuestionsAnswers
-	for _, id := range ids {
+	var topics = ids
+	if len(topics) == 0 {
+		fmt.Println("     *** You supplied no topics, we take them all ***")
+		topics = topic.GetSubTopics()
+	}
+	for _, id := range topics {
 		qaForId = topic.GetSection(id)
 		qa.Concatenate(qaForId)
-	}
-	if len(ids) == 0 {
-		// we must embed everything
-		for _, id := range topic.GetSubTopics() {
-			qaToAdd := topic.GetSection(id)
-			qa.Concatenate(qaToAdd)
-		}
 	}
 
 	return qa
@@ -245,9 +246,10 @@ func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
 	r := bufio.NewReader(p.in)
 	i := 0
 	nbOfQuestions := qa.GetCount()
+	fmt.Printf("Nb of questions: %d\n", nbOfQuestions)
 	for {
 		if p.mode == random {
-			i = int(rand.Int31n(int32(qa.GetCount())))
+			i = int(rand.Int31n(int32(nbOfQuestions)))
 		}
 		fmt.Fprintf(p.out, "%s", qa.questions[i])
 		if !p.interactive {
