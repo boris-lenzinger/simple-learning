@@ -4,13 +4,18 @@ import (
 	"fmt"
 	"lib"
 	"os"
+
+	"github.com/fatih/color"
 )
 
 func main() {
 	// Recuperation du parametre vers le fichier
 	if len(os.Args) < 2 {
-		fmt.Printf("Please supply a path to a CSV file that contains the topics.")
-		fmt.Printf(`Syntax:
+		c := color.New(color.FgRed).Add(color.Underline)
+		c.Printf("Please supply a path to a CSV file that contains the topics.\n")
+
+		c = color.New(color.FgWhite).Add(color.Bold)
+		c.Printf(`Syntax:
 	%s <csvFile> [-i]
 where:
 	* -i : stands for interactive. If set, you will have to press Return to get the
