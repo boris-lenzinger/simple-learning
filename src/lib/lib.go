@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"github.com/fatih/color"
 )
 
 const (
@@ -254,15 +255,16 @@ func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
 	fullLoop := 0
 	i := 0
 	j := 0
+	c := color.New(color.FgBlue).Add(color.Bold)
 	out := p.GetOutputStream()
 	for {
 		if j%nbOfQuestions == 0 {
 			fullLoop++
 			if fullLoop > p.limit {
-				fmt.Printf("Limite atteinte. On sort. Nombre de boucles: %d et limite: %d\n", fullLoop, p.limit)
+				fmt.Printf("Limit reached. Exiting. Number of loops: %d and limit set: %d\n", fullLoop, p.limit)
 				break
 			}
-			fmt.Fprintf(out, "Loop (%d/%d)\n", fullLoop, p.limit)
+			c.Fprintf(out, "Loop (%d/%d)\n", fullLoop, p.limit)
 		}
 		if p.mode == random {
 			i = int(rand.Int31n(int32(nbOfQuestions)))
