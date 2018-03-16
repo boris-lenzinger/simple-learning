@@ -25,6 +25,7 @@ where:
 	* -t : the time to wait between 2 questions. Default is 2 seconds. The time you set is
 	       in milliseconds.
 	* -s : ask to show the different topics of  the file, no more. Execution stops after this.
+	       Sections are supposed to start with ###.
 	* -l : ask to be questionned only on the topics that are listed here. The topics must be separated with a comma.
 `)
 		os.Exit(1)
