@@ -86,6 +86,7 @@ func TestParsingNonEmptyParameters(t *testing.T) {
 	}
 }
 
+// TestParsingSelectedTopics checks that the option -l (picking specific topics)
 func TestParsingSelectedTopics(t *testing.T) {
 	selected := "Topic 1,Topic 2"
 	arguments := []string{"-l", selected}
@@ -99,6 +100,31 @@ func TestParsingSelectedTopics(t *testing.T) {
 	listAsArray := p.GetListOfSubsections()
 	if len(listAsArray) != 2 {
 		t.Errorf("Retrieving the list of selected topics should have reported 2 elements but we received %d\n", len(listAsArray))
+	}
+}
+
+// TestNoSelectedTopicsReturnsNil checks that when the user sets no
+// specific topics, the array in nil.
+func TestNoSelectedTopicsReturnsNil(t *testing.T) {
+	arguments := []string {}
+	p, err := Parse(arguments[:]...)
+	if err != nil {
+		t.Errorf("Passing no argument make the parsing fail")
+	}
+	if p.GetListOfSubsections() != nil {
+		t.Errorf("No argument passed but the parameters holds a non nil list of selected topics as '%v'", p.GetListOfSubsections())
+	}
+}
+
+// TestParsingReverseMode checks that reverse mode is detected and works.
+func TestParsingReverseMode(t *testing.T) {
+	arguments := []string{ "-r"}
+	p, err := Parse(arguments[:]...)
+	if err != nil {
+		t.Errorf("Parsing detects reverse mode as an error")
+	}
+	if p.IsReversedMode() != true {
+		t.Errorf("Parsing failed to set the reverse mode.")
 	}
 }
 
@@ -185,6 +211,9 @@ func TestParseStream(t *testing.T) {
 
 }
 
+// TestAskQuestions tests that, in case of linear run of the questions,
+// you get the good questions and good answers that respects the requested
+// order.
 func TestAskQuestions(t *testing.T) {
 
 	r := strings.NewReader(getSampleCsvAsStream())
@@ -210,7 +239,7 @@ func TestAskQuestions(t *testing.T) {
 	}()
 
 	fmt.Println("    ****************")
-	fmt.Println("Analyzing output now...")
+	fmt.Println("Test Ask Question in Linear Mode...")
 	fmt.Println("    ****************")
 
 	s := bufio.NewScanner(pr)
@@ -219,7 +248,156 @@ func TestAskQuestions(t *testing.T) {
 	emptyLine, _ := regexp.Compile("^\\s*$")
 	loop, _ := regexp.Compile("^Loop\\s{1,}\\([0-9]{1,}/[0-9]{1,}\\)$")
 	separator, _ := regexp.Compile("^-{1,}")
+	nbOfQuestions, _ := regexp.Compile("^Nb of questions:\\s[0-9]{1,}")
+	limitReached, _ := regexp.Compile("^Limit reached. Exiting. Number of loops set to:\\s[0-9]{1,}")
 	questionsCount := questionsSet.GetCount()
+	i := 0
+	var (
+		isAnnounce     bool
+		isEmpty        bool
+		isLoop         bool
+		isSeparator    bool
+		isNbOfQ        bool
+		isLimitReached bool
+		expected       string
+		computed       string
+	)
+	for s.Scan() {
+		isAnnounce = announcement.MatchString(s.Text())
+		isEmpty = emptyLine.MatchString(s.Text())
+		isLoop = loop.MatchString(s.Text())
+		isSeparator = separator.MatchString(s.Text())
+		isNbOfQ = nbOfQuestions.MatchString(s.Text())
+		isLimitReached = limitReached.MatchString(s.Text())
+		if !isAnnounce && !isEmpty && !isLoop && !isSeparator && !isNbOfQ && ! isLimitReached {
+			expected = questionsSet.questions[i] + "     --> " + questionsSet.answers[i]
+			computed = s.Text()
+			if computed != expected {
+				t.Errorf("Check of answers failed. We were expected '%s' but received '%s'\n", expected, computed)
+			}
+			i = (i + 1) % questionsCount
+		}
+	}
+}
+
+// TestAskQuestionsInReverseMode tests that, in case of linear and reverse run
+// of the questions, you get the good questions and good answers that respects
+// the requested order.
+func TestAskQuestionsInReverseMode(t *testing.T) {
+
+	r := strings.NewReader(getSampleCsvAsStream())
+	tpp := TopicParsingParameters{
+		TopicAnnounce: "### Lesson ",
+		QaSep:         ";",
+	}
+	topic := ParseTopic(r, tpp)
+
+	pr, pw := io.Pipe()
+	ip := InterrogationParameters{
+		interactive: false,
+		wait:        1 * time.Millisecond,
+		mode:        linear,
+		out:         pw,
+		limit:       10,
+		reversed:    true,
+	}
+
+	questionsSet := topic.BuildQuestionsSet()
+	go func() {
+		defer pw.Close()
+		AskQuestions(questionsSet, ip)
+	}()
+
+	fmt.Println("    ****************")
+	fmt.Println("    Test Ask Question in Linear Reversed Mode...")
+	fmt.Println("    ****************")
+
+	s := bufio.NewScanner(pr)
+
+	announcement, _ := regexp.Compile("^" + tpp.TopicAnnounce)
+	emptyLine, _ := regexp.Compile("^\\s*$")
+	loop, _ := regexp.Compile("^Loop\\s{1,}\\([0-9]{1,}/[0-9]{1,}\\)$")
+	separator, _ := regexp.Compile("^-{1,}")
+	nbOfQuestions, _ := regexp.Compile("^Nb of questions:\\s[0-9]{1,}")
+	limitReached, _ := regexp.Compile("^Limit reached. Exiting. Number of loops set to:\\s[0-9]{1,}")
+	questionsCount := questionsSet.GetCount()
+	i := 0
+	var (
+		isAnnounce     bool
+		isEmpty        bool
+		isLoop         bool
+		isSeparator    bool
+		isNbOfQ        bool
+		isLimitReached bool
+		expected       string
+		computed       string
+	)
+	for s.Scan() {
+		isAnnounce = announcement.MatchString(s.Text())
+		isEmpty = emptyLine.MatchString(s.Text())
+		isLoop = loop.MatchString(s.Text())
+		isSeparator = separator.MatchString(s.Text())
+		isNbOfQ = nbOfQuestions.MatchString(s.Text())
+		isLimitReached = limitReached.MatchString(s.Text())
+		if !isAnnounce && !isEmpty && !isLoop && !isSeparator && !isNbOfQ && ! isLimitReached {
+			expected = questionsSet.answers[i] + "     --> " + questionsSet.questions[i]
+			computed = s.Text()
+			if computed != expected {
+				t.Errorf("Check of answers failed. We were expected '%s' but received '%s'\n", expected, computed)
+			}
+			i = (i + 1) % questionsCount
+		}
+	}
+}
+
+/*
+// TestAskQuestionsInteractive tests that, in case of linear and interactive
+// run of the questions, the user gets the good questions and has to press
+// return to get the matching answers and all of this in the requested order.
+func TestAskQuestionsInInteractiveMode(t *testing.T) {
+
+	r := strings.NewReader(getSampleCsvAsStream())
+	tpp := TopicParsingParameters{
+		TopicAnnounce: "### Lesson ",
+		QaSep:         ";",
+	}
+	topic := ParseTopic(r, tpp)
+
+	pr, pw := io.Pipe()
+	ip := InterrogationParameters{
+		interactive: true,
+		wait:        1 * time.Millisecond,
+		mode:        linear,
+		in:          pr,
+		out:         pw,
+		limit:       10,
+		reversed:    false,
+	}
+
+	fmt.Println("    ****************")
+	fmt.Println("    Test Ask Question in Linear Mode (pseudo-interactive)...")
+	fmt.Println("    ****************")
+
+	questionsSet := topic.BuildQuestionsSet()
+	questionsCount := questionsSet.GetCount()
+
+	// Introducing a new go routine that will handle when to send
+	// carriage return to unblock the process
+
+	go func() {
+		defer pw.Close()
+		AskQuestions(questionsSet, ip)
+	}()
+
+	s := bufio.NewScanner(pr)
+
+	// We define here the expected tokens that will separate the
+	// different answer so we can ignore them and not be confused
+	// during the parsing.
+	announcement, _ := regexp.Compile("^" + tpp.TopicAnnounce)
+	emptyLine, _ := regexp.Compile("^\\s*$")
+	loop, _ := regexp.Compile("^Loop\\s{1,}\\([0-9]{1,}/[0-9]{1,}\\)$")
+	separator, _ := regexp.Compile("^-{1,}")
 	i := 0
 	var (
 		isAnnounce  bool
@@ -235,7 +413,7 @@ func TestAskQuestions(t *testing.T) {
 		isLoop = loop.MatchString(s.Text())
 		isSeparator = separator.MatchString(s.Text())
 		if !isAnnounce && !isEmpty && !isLoop && !isSeparator {
-			expected = questionsSet.questions[i] + "     --> " + questionsSet.answers[i]
+			expected = questionsSet.answers[i] + "     \n--> " + questionsSet.questions[i]
 			computed = s.Text()
 			if computed != expected {
 				t.Errorf("Check of answers failed. We were expected '%s' but received '%s'\n", expected, computed)
@@ -244,3 +422,4 @@ func TestAskQuestions(t *testing.T) {
 		}
 	}
 }
+*/
