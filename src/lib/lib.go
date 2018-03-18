@@ -57,11 +57,19 @@ type InterrogationParameters struct {
 	out         io.Writer         // The place where the questions are written to
 	subsections string            // the list of selected subsections chosen for the questioning
 	limit       int               // Limit is the number of times the list is repeated during interrogation. Default is 10
+	reversed    bool              // Requires that questions becomes answers and answers becomes questions
+	receiver    chan<- string     // Experimental. Channel to receive commands
+	publisher   <-chan string     // Experimental. Channel to publish output
 }
 
 // IsSummaryMode tells if the parameters require to have a summary of the subsections.
 func (p InterrogationParameters) IsSummaryMode() bool {
 	return p.mode == summary
+}
+
+// IsReversedMode tells if the user wants that the left column are now answers and right column(s) are the questions
+func (p InterrogationParameters) IsReversedMode() bool {
+	return p.reversed
 }
 
 // GetOutputStream gets the Writer where questions will be written to.
@@ -114,6 +122,8 @@ func Parse(args ...string) (InterrogationParameters, error) {
 			p.mode = summary
 		case "-l":
 			p.subsections = args[i+1]
+		case "-r":
+			p.reversed = true
 		}
 	}
 	return p, nil
@@ -251,17 +261,18 @@ func (topic Topic) BuildQuestionsSet(ids ...string) QuestionsAnswers {
 func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
 	r := bufio.NewReader(p.in)
 	nbOfQuestions := qa.GetCount()
-	fmt.Printf("Nb of questions: %d\n", nbOfQuestions)
+	out := p.GetOutputStream()
+	fmt.Fprintf(out, "Nb of questions: %d\n", nbOfQuestions)
 	fullLoop := 0
 	i := 0
 	j := 0
 	c := color.New(color.FgBlue).Add(color.Bold)
-	out := p.GetOutputStream()
+	var question, answer string
 	for {
 		if j%nbOfQuestions == 0 {
 			fullLoop++
 			if fullLoop > p.limit {
-				fmt.Printf("Limit reached. Exiting. Number of loops: %d and limit set: %d\n", fullLoop, p.limit)
+				fmt.Fprintf(out, "Limit reached. Exiting. Number of loops set to: %d\n", p.limit)
 				break
 			}
 			c.Fprintf(out, "Loop (%d/%d)\n", fullLoop, p.limit)
@@ -269,14 +280,20 @@ func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
 		if p.mode == random {
 			i = int(rand.Int31n(int32(nbOfQuestions)))
 		}
-		fmt.Fprintf(out, "%s", qa.questions[i])
+		question = qa.questions[i]
+		answer = qa.answers[i]
+		if p.IsReversedMode() {
+			question = qa.answers[i]
+			answer = qa.questions[i]
+		}
+		fmt.Fprintf(out, "%s", question)
 		if !p.interactive {
 			time.Sleep(p.wait)
 		} else {
 			r.ReadLine()
 		}
-		fmt.Fprintf(out, "     --> %s\n", qa.answers[i])
-		fmt.Fprintln(p.out, "--------------------------")
+		fmt.Fprintf(out, "     --> %s\n", answer)
+		fmt.Fprintln(out, "--------------------------")
 		if p.mode == linear {
 			i = (i + 1) % nbOfQuestions
 		}
