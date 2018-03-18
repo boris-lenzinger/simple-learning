@@ -27,6 +27,7 @@ where:
 	* -s : ask to show the different topics of  the file, no more. Execution stops after this.
 	       Sections are supposed to start with ###.
 	* -l : ask to be questionned only on the topics that are listed here. The topics must be separated with a comma.
+	* -r : reverts the questioning. This is like a Jeopardy in fact. The right column becomes the questions while the right column becomes the answer.
 `)
 		os.Exit(1)
 	}
