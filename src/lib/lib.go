@@ -138,7 +138,8 @@ func (qa QuestionsAnswers) GetCount() int {
 	return size
 }
 
-// NewTopic creates a new topic.
+// NewTopic creates a new topic. Understand a topic as a set of questions
+// with a title.
 func NewTopic() Topic {
 	return Topic{
 		list: make(map[string]QuestionsAnswers),
@@ -157,6 +158,8 @@ func (topic *Topic) GetSubsection(id string) QuestionsAnswers {
 	return qa
 }
 
+// SetSubsection defines a subsection with a given id and associates
+// to it a list of questions.
 func (topic *Topic) SetSubsection(id string, qa QuestionsAnswers) {
 	topic.list[id] = qa
 }
