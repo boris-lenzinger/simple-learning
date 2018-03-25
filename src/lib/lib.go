@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"github.com/fatih/color"
 )
@@ -58,8 +59,9 @@ type InterrogationParameters struct {
 	subsections string            // the list of selected subsections chosen for the questioning
 	limit       int               // Limit is the number of times the list is repeated during interrogation. Default is 10
 	reversed    bool              // Requires that questions becomes answers and answers becomes questions
-	receiver    chan<- string     // Experimental. Channel to receive commands
-	publisher   <-chan string     // Experimental. Channel to publish output
+	qachan      chan string       // Experimental. Channel to receive questions and answers
+	command     chan string       // Experimental. Channel to receive commands
+	publisher   chan string       // Experimental. Channel to publish to the output. This channel collects all that needs to be put to the user.
 }
 
 // IsSummaryMode tells if the parameters require to have a summary of the subsections.
@@ -101,7 +103,10 @@ func Parse(args ...string) (InterrogationParameters, error) {
 		in:          os.Stdin,
 		out:         os.Stdout,
 		subsections: "",
-		limit:       10,
+		limit:       1,
+		qachan:      make(chan string),
+		command:     make(chan string),
+		publisher:   make(chan string),
 	}
 	for i, opt := range args {
 		switch opt {
@@ -260,25 +265,98 @@ func (topic Topic) BuildQuestionsSet(ids ...string) QuestionsAnswers {
 	return qa
 }
 
-// AskQuestions will question the user on the set of questions.
+// AskQuestions will question the user on the set of questions. The
+// parameter object will supply data to refine the questioning.
 func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
-	r := bufio.NewReader(p.in)
-	nbOfQuestions := qa.GetCount()
-	out := p.GetOutputStream()
-	fmt.Fprintf(out, "Nb of questions: %d\n", nbOfQuestions)
 	fullLoop := 0
 	i := 0
 	j := 0
 	c := color.New(color.FgBlue).Add(color.Bold)
+
+	stopper := make(chan string)
+
+	var wg sync.WaitGroup
+	wg.Add(3)
+
+	go func() {
+		defer wg.Done()
+
+		i := 0
+		for {
+			select {
+			case v, ok := <- p.qachan:
+				if !ok {
+					stopper <- "qachan"
+					return
+				}
+				fmt.Printf("[qachan] %s\n",v)
+				p.publisher <- v
+				i++
+				if i % 2 == 0 {
+					p.publisher <- fmt.Sprintf("------------------------\n")
+				}
+			}
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		nbStopped := 0
+
+		for {
+			select {
+			case v, ok := <- p.publisher:
+				if !ok {
+					return
+				}
+				fmt.Printf("[publisher] %s\n", v)
+				fmt.Fprintf(p.out, v)
+			case <- stopper:
+				nbStopped++
+				if nbStopped == 2 {
+					// We are sure we closed the qa and command channels.
+					// The publisher does not need to read from here, at
+					// least for this function.
+					close(stopper)
+					return
+				}
+			}
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case v, ok := <- p.command:
+				if !ok {
+					stopper <- "command"
+					return
+				}
+				fmt.Printf("[command] %s\n", v)
+				p.publisher <- v
+			}
+		}
+	}()
+
+	nbOfQuestions := qa.GetCount()
+	fmt.Println("[general] Pushing number of questions\n")
+	p.publisher <- fmt.Sprintf("Nb of questions: %d\n", nbOfQuestions)
+
 	var question, answer string
+	s := bufio.NewScanner(p.in)
 	for {
 		if j%nbOfQuestions == 0 {
 			fullLoop++
 			if fullLoop > p.limit {
-				fmt.Fprintf(out, "Limit reached. Exiting. Number of loops set to: %d\n", p.limit)
+				p.publisher <- fmt.Sprintf("Limit reached. Exiting. Number of loops set to: %d\n", p.limit)
+				// if the qa chan is closed, then we have to close the others.
+				close(p.qachan)
+				close(p.command)
 				break
 			}
-			c.Fprintf(out, "Loop (%d/%d)\n", fullLoop, p.limit)
+			fmt.Println("[general] Pushing loop count to publisher")
+			p.publisher <- c.Sprintf("Loop (%d/%d)\n", fullLoop, p.limit)
 		}
 		if p.mode == random {
 			i = int(rand.Int31n(int32(nbOfQuestions)))
@@ -289,17 +367,21 @@ func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
 			question = qa.answers[i]
 			answer = qa.questions[i]
 		}
-		fmt.Fprintf(out, "%s", question)
+		p.qachan <- fmt.Sprintf("%s", question)
 		if !p.interactive {
 			time.Sleep(p.wait)
 		} else {
-			r.ReadLine()
+			if s.Scan() {
+				p.command <- s.Text()
+			}
 		}
-		fmt.Fprintf(out, "     --> %s\n", answer)
-		fmt.Fprintln(out, "--------------------------")
+		p.qachan <- fmt.Sprintf("     --> %s\n", answer)
+
 		if p.mode == linear {
 			i = (i + 1) % nbOfQuestions
 		}
 		j++
 	}
+
+	wg.Wait()
 }

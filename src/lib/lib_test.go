@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -28,6 +29,8 @@ func TestAddEntry(t *testing.T) {
 	}
 }
 
+// TestConcatenate check that adding a set of questions/answers to another
+// set is working fine.
 func TestConcatenate(t *testing.T) {
 	qa := NewQA()
 	qa.AddEntry("question", "answer")
@@ -106,7 +109,7 @@ func TestParsingSelectedTopics(t *testing.T) {
 // TestNoSelectedTopicsReturnsNil checks that when the user sets no
 // specific topics, the array in nil.
 func TestNoSelectedTopicsReturnsNil(t *testing.T) {
-	arguments := []string {}
+	arguments := []string{}
 	p, err := Parse(arguments[:]...)
 	if err != nil {
 		t.Errorf("Passing no argument make the parsing fail")
@@ -118,7 +121,7 @@ func TestNoSelectedTopicsReturnsNil(t *testing.T) {
 
 // TestParsingReverseMode checks that reverse mode is detected and works.
 func TestParsingReverseMode(t *testing.T) {
-	arguments := []string{ "-r"}
+	arguments := []string{"-r"}
 	p, err := Parse(arguments[:]...)
 	if err != nil {
 		t.Errorf("Parsing detects reverse mode as an error")
@@ -214,7 +217,7 @@ func TestParseStream(t *testing.T) {
 // TestAskQuestions tests that, in case of linear run of the questions,
 // you get the good questions and good answers that respects the requested
 // order.
-func TestAskQuestions(t *testing.T) {
+func TestAskQuestionsInUnattendedMode(t *testing.T) {
 
 	r := strings.NewReader(getSampleCsvAsStream())
 	tpp := TopicParsingParameters{
@@ -224,18 +227,26 @@ func TestAskQuestions(t *testing.T) {
 	topic := ParseTopic(r, tpp)
 
 	pr, pw := io.Pipe()
+	defer pw.Close()
 	ip := InterrogationParameters{
 		interactive: false,
 		wait:        1 * time.Millisecond,
 		mode:        linear,
 		out:         pw,
 		limit:       10,
+		qachan:	make(chan string),
+		command:	make(chan string),
+		publisher:	make(chan string),
 	}
 
 	questionsSet := topic.BuildQuestionsSet()
+	var wg sync.WaitGroup
+	wg.Add(2)
+
 	go func() {
-		defer pw.Close()
+		defer wg.Done()
 		AskQuestions(questionsSet, ip)
+		pw.Close()
 	}()
 
 	fmt.Println("    ****************")
@@ -262,28 +273,37 @@ func TestAskQuestions(t *testing.T) {
 		expected       string
 		computed       string
 	)
-	for s.Scan() {
-		isAnnounce = announcement.MatchString(s.Text())
-		isEmpty = emptyLine.MatchString(s.Text())
-		isLoop = loop.MatchString(s.Text())
-		isSeparator = separator.MatchString(s.Text())
-		isNbOfQ = nbOfQuestions.MatchString(s.Text())
-		isLimitReached = limitReached.MatchString(s.Text())
-		if !isAnnounce && !isEmpty && !isLoop && !isSeparator && !isNbOfQ && ! isLimitReached {
-			expected = questionsSet.questions[i] + "     --> " + questionsSet.answers[i]
-			computed = s.Text()
-			if computed != expected {
-				t.Errorf("Check of answers failed. We were expected '%s' but received '%s'\n", expected, computed)
+
+	go func() {
+		defer wg.Done()
+		for s.Scan() {
+			text := s.Text()
+			fmt.Printf("Scan succeeded. Text retrieved is '%s'\n", text)
+			isAnnounce = announcement.MatchString(text)
+			isEmpty = emptyLine.MatchString(text)
+			isLoop = loop.MatchString(text)
+			isSeparator = separator.MatchString(text)
+			isNbOfQ = nbOfQuestions.MatchString(text)
+			isLimitReached = limitReached.MatchString(text)
+			if !isAnnounce && !isEmpty && !isLoop && !isSeparator && !isNbOfQ && !isLimitReached {
+				expected = questionsSet.questions[i] + "     --> " + questionsSet.answers[i]
+				computed = text
+				if computed != expected {
+					t.Errorf("Check of answers failed. We were expected '%s' but received '%s'\n", expected, computed)
+				}
+				i = (i + 1) % questionsCount
 			}
-			i = (i + 1) % questionsCount
 		}
-	}
+	}()
+	wg.Wait()
+	close(ip.publisher)
 }
 
+/*
 // TestAskQuestionsInReverseMode tests that, in case of linear and reverse run
 // of the questions, you get the good questions and good answers that respects
 // the requested order.
-func TestAskQuestionsInReverseMode(t *testing.T) {
+func TestAskQuestionsInReverseAndUnattendedMode(t *testing.T) {
 
 	r := strings.NewReader(getSampleCsvAsStream())
 	tpp := TopicParsingParameters{
