@@ -265,82 +265,69 @@ func (topic Topic) BuildQuestionsSet(ids ...string) QuestionsAnswers {
 	return qa
 }
 
+// fanOutChannel reads from the readFrom channel and dispatch the elements
+// to the writeTo channel. When reading from the readFrom channel breaks,
+// we write to the stopper channel the name of the channel from which we
+// cannot read anymore.
+func fanOutChannel(wg *sync.WaitGroup, readFrom <-chan string, writeTo chan<- string, stopper chan<- string, chanName string) {
+	defer wg.Done()
+
+	for {
+		select {
+		case v, ok := <- readFrom:
+			if !ok {
+				stopper <- chanName
+				return
+			}
+			writeTo <- v
+		}
+	}
+}
+
+// 
+func name2(wg *sync.WaitGroup, readFrom <-chan string, stopper <-chan string, out io.Writer) {
+	defer wg.Done()
+	nbStopped := 0
+
+	for {
+		select {
+		case v, ok := <- readFrom:
+			if !ok {
+				return
+			}
+			fmt.Fprintf(out, v)
+		case <- stopper:
+			nbStopped++
+			if nbStopped == 2 {
+				// We are sure we closed the qa and command channels.
+				// The publisher does not need to read from here, at
+				// least for this function.
+				return
+			}
+		}
+	}
+}
+
+
 // AskQuestions will question the user on the set of questions. The
 // parameter object will supply data to refine the questioning.
 func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
-	fullLoop := 0
-	i := 0
-	j := 0
+	fullLoop, i, j := 0, 0, 0
 	c := color.New(color.FgBlue).Add(color.Bold)
+
+	f, _ := os.Create("/tmp/trace.txt")
+	fw := bufio.NewWriter(f)
 
 	stopper := make(chan string)
 
 	var wg sync.WaitGroup
 	wg.Add(3)
 
-	go func() {
-		defer wg.Done()
-
-		i := 0
-		for {
-			select {
-			case v, ok := <- p.qachan:
-				if !ok {
-					stopper <- "qachan"
-					return
-				}
-				fmt.Printf("[qachan] %s\n",v)
-				p.publisher <- v
-				i++
-				if i % 2 == 0 {
-					p.publisher <- fmt.Sprintf("------------------------\n")
-				}
-			}
-		}
-	}()
-
-	go func() {
-		defer wg.Done()
-		nbStopped := 0
-
-		for {
-			select {
-			case v, ok := <- p.publisher:
-				if !ok {
-					return
-				}
-				fmt.Printf("[publisher] %s\n", v)
-				fmt.Fprintf(p.out, v)
-			case <- stopper:
-				nbStopped++
-				if nbStopped == 2 {
-					// We are sure we closed the qa and command channels.
-					// The publisher does not need to read from here, at
-					// least for this function.
-					close(stopper)
-					return
-				}
-			}
-		}
-	}()
-
-	go func() {
-		defer wg.Done()
-		for {
-			select {
-			case v, ok := <- p.command:
-				if !ok {
-					stopper <- "command"
-					return
-				}
-				fmt.Printf("[command] %s\n", v)
-				p.publisher <- v
-			}
-		}
-	}()
+	go fanOutChannel(&wg, p.qachan, p.publisher, stopper, "qachan")
+	go name2(&wg, p.publisher, stopper, p.out)
+  go fanOutChannel(&wg, p.command, p.publisher, stopper, "command")
 
 	nbOfQuestions := qa.GetCount()
-	fmt.Println("[general] Pushing number of questions\n")
 	p.publisher <- fmt.Sprintf("Nb of questions: %d\n", nbOfQuestions)
 
 	var question, answer string
@@ -355,8 +342,9 @@ func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
 				close(p.command)
 				break
 			}
-			fmt.Println("[general] Pushing loop count to publisher")
+			fw.WriteString("Pushing loop announcement to the publisher, index="+strconv.Itoa(j)+"\n")
 			p.publisher <- c.Sprintf("Loop (%d/%d)\n", fullLoop, p.limit)
+			time.Sleep(10*time.Millisecond)
 		}
 		if p.mode == random {
 			i = int(rand.Int31n(int32(nbOfQuestions)))
@@ -367,6 +355,7 @@ func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
 			question = qa.answers[i]
 			answer = qa.questions[i]
 		}
+		fw.WriteString("Pushing the question to the qachan")
 		p.qachan <- fmt.Sprintf("%s", question)
 		if !p.interactive {
 			time.Sleep(p.wait)
@@ -375,6 +364,7 @@ func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
 				p.command <- s.Text()
 			}
 		}
+		fw.WriteString("Pushing the answer to the qachan")
 		p.qachan <- fmt.Sprintf("     --> %s\n", answer)
 
 		if p.mode == linear {
@@ -384,4 +374,5 @@ func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
 	}
 
 	wg.Wait()
+	f.Close()
 }
