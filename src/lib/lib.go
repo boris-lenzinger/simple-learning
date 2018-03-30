@@ -315,9 +315,6 @@ func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
 	fullLoop, i, j := 0, 0, 0
 	c := color.New(color.FgBlue).Add(color.Bold)
 
-	f, _ := os.Create("/tmp/trace.txt")
-	fw := bufio.NewWriter(f)
-
 	stopper := make(chan string)
 
 	var wg sync.WaitGroup
@@ -342,7 +339,6 @@ func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
 				close(p.command)
 				break
 			}
-			fw.WriteString("Pushing loop announcement to the publisher, index="+strconv.Itoa(j)+"\n")
 			p.publisher <- c.Sprintf("Loop (%d/%d)\n", fullLoop, p.limit)
 			time.Sleep(10*time.Millisecond)
 		}
@@ -355,7 +351,6 @@ func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
 			question = qa.answers[i]
 			answer = qa.questions[i]
 		}
-		fw.WriteString("Pushing the question to the qachan")
 		p.qachan <- fmt.Sprintf("%s", question)
 		if !p.interactive {
 			time.Sleep(p.wait)
@@ -364,7 +359,6 @@ func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
 				p.command <- s.Text()
 			}
 		}
-		fw.WriteString("Pushing the answer to the qachan")
 		p.qachan <- fmt.Sprintf("     --> %s\n", answer)
 
 		if p.mode == linear {
@@ -374,5 +368,4 @@ func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
 	}
 
 	wg.Wait()
-	f.Close()
 }
