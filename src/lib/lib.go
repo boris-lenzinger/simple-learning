@@ -332,7 +332,7 @@ func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
 	nbOfQuestions := qa.GetCount()
 
 	go fanOutChannel(&wg, p.qachan, p.publisher)
-	go publishChanToWriter(&wg, p.publisher, p.out, nbOfQuestions, p.limit)
+	go publishChanToWriter(&wg, p.publisher, p.GetOutputStream(), nbOfQuestions, p.limit)
   go fanOutChannel(&wg, p.command, p.publisher)
 
 	var question, answer string
