@@ -69,14 +69,14 @@ func (p InterrogationParameters) IsSummaryMode() bool {
 	return p.mode == summary
 }
 
-// IsReversedMode tells if the user wants that the left column are now answers and right column(s) are the questions
-func (p InterrogationParameters) IsReversedMode() bool {
-	return p.reversed
-}
-
 // GetOutputStream gets the Writer where questions will be written to.
 func (p InterrogationParameters) GetOutputStream() io.Writer {
 	return p.out
+}
+
+// IsReversedMode tells if the user wants that the left column are now answers and right column(s) are the questions
+func (p InterrogationParameters) IsReversedMode() bool {
+	return p.reversed
 }
 
 // GetListOfSubsections returns a string array containing all the subsections selected by
@@ -357,12 +357,12 @@ func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
 			answer = qa.questions[i]
 		}
 		p.qachan <- fmt.Sprintf("%s", question)
-		if !p.interactive {
-			time.Sleep(p.wait)
-		} else {
+		if p.interactive {
 			if s.Scan() {
 				p.command <- s.Text()
 			}
+		} else {
+			time.Sleep(p.wait)
 		}
 		p.qachan <- fmt.Sprintf("%s", answer)
 
