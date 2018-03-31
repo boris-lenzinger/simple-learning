@@ -12,6 +12,14 @@ import (
 	"time"
 )
 
+var (
+	emptyLine, _ = regexp.Compile("^\\s*$")
+	loop, _ = regexp.Compile("^Loop\\s{1,}\\([0-9]{1,}/[0-9]{1,}\\)$")
+	separator, _ = regexp.Compile("^-{1,}")
+	nbOfQuestions, _ = regexp.Compile("^Nb of questions:\\s[0-9]{1,}")
+	limitReached, _ = regexp.Compile("^Limit reached. Exiting. Number of loops set to:\\s[0-9]{1,}")
+)
+
 // TestAddEntry is testing not only the AddEntry function but the GetCount
 // too and the initialization of a QA structure.
 func TestAddEntry(t *testing.T) {
@@ -183,14 +191,18 @@ func getSampleCsvAsStream() string {
 	return content
 }
 
+func getTpp() TopicParsingParameters {
+	return TopicParsingParameters {
+		TopicAnnounce: "### Lesson ",
+		QaSep:         ";",
+	}
+}
+
 // Testing the way to get the data into the topic data structure.
 func TestParseStream(t *testing.T) {
 
 	r := strings.NewReader(getSampleCsvAsStream())
-	p := TopicParsingParameters{
-		TopicAnnounce: "### Lesson ",
-		QaSep:         ";",
-	}
+	p := getTpp()
 
 	topic := ParseTopic(r, p)
 	count := topic.GetSubsectionsCount()
@@ -214,113 +226,78 @@ func TestParseStream(t *testing.T) {
 
 }
 
+func getGenericInterrogationParameters() InterrogationParameters {
+	ip := InterrogationParameters{
+		interactive: false,
+		wait:        1*time.Millisecond,
+		limit:       10,
+		mode:        linear,
+		qachan:	     make(chan string),
+		command:	   make(chan string),
+		publisher:	 make(chan string),
+	}
+	return ip
+}
+
+func getGenericUnattendedInterrogationParameters() InterrogationParameters {
+	ip := getGenericInterrogationParameters()
+	ip.interactive = false
+	return ip
+}
+
+func getGenericInteractiveInterrogationParameters() InterrogationParameters {
+	ip := getGenericInterrogationParameters()
+	ip.interactive = true
+	return ip
+}
+
 // TestAskQuestions tests that, in case of linear run of the questions,
 // you get the good questions and good answers that respects the requested
 // order.
 func TestAskQuestionsInUnattendedMode(t *testing.T) {
 
 	r := strings.NewReader(getSampleCsvAsStream())
-	tpp := TopicParsingParameters{
-		TopicAnnounce: "### Lesson ",
-		QaSep:         ";",
-	}
+	tpp := getTpp()
 	topic := ParseTopic(r, tpp)
 
 	pr, pw := io.Pipe()
 	defer pw.Close()
-	ip := InterrogationParameters{
-		interactive: false,
-		wait:        1 * time.Millisecond,
-		mode:        linear,
-		out:         pw,
-		limit:       10,
-		qachan:	     make(chan string),
-		command:	   make(chan string),
-		publisher:	 make(chan string),
-	}
+	ip := getGenericUnattendedInterrogationParameters()
+  ip.out = pw
 
 	fmt.Println("    ****************")
 	fmt.Println("Test Ask Question in Linear Mode...")
 	fmt.Println("    ****************")
 
-	s := bufio.NewScanner(pr)
-
-	announcement, _ := regexp.Compile("^" + tpp.TopicAnnounce)
-	emptyLine, _ := regexp.Compile("^\\s*$")
-	loop, _ := regexp.Compile("^Loop\\s{1,}\\([0-9]{1,}/[0-9]{1,}\\)$")
-	separator, _ := regexp.Compile("^-{1,}")
-	nbOfQuestions, _ := regexp.Compile("^Nb of questions:\\s[0-9]{1,}")
-	limitReached, _ := regexp.Compile("^Limit reached. Exiting. Number of loops set to:\\s[0-9]{1,}")
-	i := 0
-	var (
-		isAnnounce     bool
-		isEmpty        bool
-		isLoop         bool
-		isSeparator    bool
-		isNbOfQ        bool
-		isLimitReached bool
-		expected       string
-		computed       string
-	)
-
 	questionsSet := topic.BuildQuestionsSet()
-	questionsCount := questionsSet.GetCount()
 	var wg sync.WaitGroup
 	wg.Add(2)
 
 	go func() {
 		defer wg.Done()
 		AskQuestions(questionsSet, ip)
-		fmt.Println("AskQuestion is over.")
 		pw.Close()
 	}()
 
-	go func() {
-		defer wg.Done()
-		for s.Scan() {
-			text := s.Text()
-			isAnnounce = announcement.MatchString(text)
-			isEmpty = emptyLine.MatchString(text)
-			isLoop = loop.MatchString(text)
-			isSeparator = separator.MatchString(text)
-			isNbOfQ = nbOfQuestions.MatchString(text)
-			isLimitReached = limitReached.MatchString(text)
-			if !isAnnounce && !isEmpty && !isLoop && !isSeparator && !isNbOfQ && !isLimitReached {
-				expected = questionsSet.questions[i] + "     --> " + questionsSet.answers[i]
-				computed = text
-				if computed != expected {
-					t.Errorf("Check of answers failed. Expected '%s' but received '%s'\n", expected, computed)
-				}
-				i = (i + 1) % questionsCount
-			}
-		}
-		fmt.Println("Scan is over.")
-	}()
-	wg.Wait()
+	s := bufio.NewScanner(pr)
+
+	validateOutput(tpp, questionsSet, *s, t, ip.reversed)
+
 }
 
-/*
 // TestAskQuestionsInReverseMode tests that, in case of linear and reverse run
 // of the questions, you get the good questions and good answers that respects
 // the requested order.
 func TestAskQuestionsInReverseAndUnattendedMode(t *testing.T) {
 
 	r := strings.NewReader(getSampleCsvAsStream())
-	tpp := TopicParsingParameters{
-		TopicAnnounce: "### Lesson ",
-		QaSep:         ";",
-	}
+	tpp := getTpp()
 	topic := ParseTopic(r, tpp)
 
 	pr, pw := io.Pipe()
-	ip := InterrogationParameters{
-		interactive: false,
-		wait:        1 * time.Millisecond,
-		mode:        linear,
-		out:         pw,
-		limit:       10,
-		reversed:    true,
-	}
+	ip := getGenericUnattendedInterrogationParameters()
+  ip.out = pw
+	ip.reversed = true
 
 	questionsSet := topic.BuildQuestionsSet()
 	go func() {
@@ -334,12 +311,13 @@ func TestAskQuestionsInReverseAndUnattendedMode(t *testing.T) {
 
 	s := bufio.NewScanner(pr)
 
+	validateOutput(tpp, questionsSet, *s, t, ip.reversed)
+}
+
+//
+func validateOutput(tpp TopicParsingParameters, questionsSet QuestionsAnswers, s bufio.Scanner, t *testing.T, reverseMode bool) {
+
 	announcement, _ := regexp.Compile("^" + tpp.TopicAnnounce)
-	emptyLine, _ := regexp.Compile("^\\s*$")
-	loop, _ := regexp.Compile("^Loop\\s{1,}\\([0-9]{1,}/[0-9]{1,}\\)$")
-	separator, _ := regexp.Compile("^-{1,}")
-	nbOfQuestions, _ := regexp.Compile("^Nb of questions:\\s[0-9]{1,}")
-	limitReached, _ := regexp.Compile("^Limit reached. Exiting. Number of loops set to:\\s[0-9]{1,}")
 	questionsCount := questionsSet.GetCount()
 	i := 0
 	var (
@@ -360,7 +338,11 @@ func TestAskQuestionsInReverseAndUnattendedMode(t *testing.T) {
 		isNbOfQ = nbOfQuestions.MatchString(s.Text())
 		isLimitReached = limitReached.MatchString(s.Text())
 		if !isAnnounce && !isEmpty && !isLoop && !isSeparator && !isNbOfQ && ! isLimitReached {
-			expected = questionsSet.answers[i] + "     --> " + questionsSet.questions[i]
+			// default is non reverse mode
+			expected = questionsSet.questions[i] + "     --> " + questionsSet.answers[i]
+			if reverseMode {
+			  expected = questionsSet.answers[i] + "     --> " + questionsSet.questions[i]
+			}
 			computed = s.Text()
 			if computed != expected {
 				t.Errorf("Check of answers failed. We were expected '%s' but received '%s'\n", expected, computed)
@@ -370,29 +352,20 @@ func TestAskQuestionsInReverseAndUnattendedMode(t *testing.T) {
 	}
 }
 
-/*
 // TestAskQuestionsInteractive tests that, in case of linear and interactive
 // run of the questions, the user gets the good questions and has to press
 // return to get the matching answers and all of this in the requested order.
-func TestAskQuestionsInInteractiveMode(t *testing.T) {
+func TestAskQuestionsInLinearAndInteractiveMode(t *testing.T) {
 
 	r := strings.NewReader(getSampleCsvAsStream())
-	tpp := TopicParsingParameters{
-		TopicAnnounce: "### Lesson ",
-		QaSep:         ";",
-	}
+	tpp := getTpp()
 	topic := ParseTopic(r, tpp)
 
 	pr, pw := io.Pipe()
-	ip := InterrogationParameters{
-		interactive: true,
-		wait:        1 * time.Millisecond,
-		mode:        linear,
-		in:          pr,
-		out:         pw,
-		limit:       10,
-		reversed:    false,
-	}
+	userIn, userOut := io.Pipe()
+	ip := getGenericInteractiveInterrogationParameters()
+	ip.in = userIn
+	ip.out = pw
 
 	fmt.Println("    ****************")
 	fmt.Println("    Test Ask Question in Linear Mode (pseudo-interactive)...")
@@ -401,45 +374,21 @@ func TestAskQuestionsInInteractiveMode(t *testing.T) {
 	questionsSet := topic.BuildQuestionsSet()
 	questionsCount := questionsSet.GetCount()
 
-	// Introducing a new go routine that will handle when to send
-	// carriage return to unblock the process
-
 	go func() {
 		defer pw.Close()
 		AskQuestions(questionsSet, ip)
 	}()
 
+	go func() {
+		// Simulation of interactive mode: the "user" sends return
+		// carriage to command.
+		for i := 0; i < ip.limit * questionsCount; i++ {
+			fmt.Fprintf(userOut, "\n")
+		}
+	}()
+
 	s := bufio.NewScanner(pr)
 
-	// We define here the expected tokens that will separate the
-	// different answer so we can ignore them and not be confused
-	// during the parsing.
-	announcement, _ := regexp.Compile("^" + tpp.TopicAnnounce)
-	emptyLine, _ := regexp.Compile("^\\s*$")
-	loop, _ := regexp.Compile("^Loop\\s{1,}\\([0-9]{1,}/[0-9]{1,}\\)$")
-	separator, _ := regexp.Compile("^-{1,}")
-	i := 0
-	var (
-		isAnnounce  bool
-		isEmpty     bool
-		isLoop      bool
-		isSeparator bool
-		expected    string
-		computed    string
-	)
-	for s.Scan() {
-		isAnnounce = announcement.MatchString(s.Text())
-		isEmpty = emptyLine.MatchString(s.Text())
-		isLoop = loop.MatchString(s.Text())
-		isSeparator = separator.MatchString(s.Text())
-		if !isAnnounce && !isEmpty && !isLoop && !isSeparator {
-			expected = questionsSet.answers[i] + "     \n--> " + questionsSet.questions[i]
-			computed = s.Text()
-			if computed != expected {
-				t.Errorf("Check of answers failed. We were expected '%s' but received '%s'\n", expected, computed)
-			}
-			i = (i + 1) % questionsCount
-		}
-	}
+	validateOutput(tpp, questionsSet, *s, t, ip.reversed)
+
 }
-*/
