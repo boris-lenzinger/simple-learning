@@ -313,10 +313,10 @@ func publishChanToWriter(wg *sync.WaitGroup, readFrom <-chan string, stopper <-c
 			itemsRead++
 			switch {
 			case itemsRead%2==1:
-				fmt.Fprintf(out, strconv.Itoa(itemsRead)+"'"+v+"'")
+				fmt.Fprintf(out, v)
 				// Questions asked. Must publish the answer now.
 			case itemsRead%2==0:
-				fmt.Fprintf(out, "["+strconv.Itoa(itemsRead)+"]     --> '" +v+"'\n")
+				fmt.Fprintf(out, "     --> " +v+"\n")
 				fmt.Fprintf(out, "---------------------------\n")
 			}
 		case <- stopper:
