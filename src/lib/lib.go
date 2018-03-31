@@ -269,14 +269,13 @@ func (topic Topic) BuildQuestionsSet(ids ...string) QuestionsAnswers {
 // to the writeTo channel. When reading from the readFrom channel breaks,
 // we write to the stopper channel the name of the channel from which we
 // cannot read anymore.
-func fanOutChannel(wg *sync.WaitGroup, readFrom <-chan string, writeTo chan<- string, stopper chan<- string, chanName string) {
+func fanOutChannel(wg *sync.WaitGroup, readFrom <-chan string, writeTo chan<- string) {
 	defer wg.Done()
 
 	for {
 		select {
 		case v, ok := <- readFrom:
 			if !ok {
-				stopper <- chanName
 				return
 			}
 			if len(v) != 0 {
@@ -287,9 +286,8 @@ func fanOutChannel(wg *sync.WaitGroup, readFrom <-chan string, writeTo chan<- st
 }
 
 // 
-func publishChanToWriter(wg *sync.WaitGroup, readFrom <-chan string, stopper <-chan string, out io.Writer, qCount int, maxLoops int) {
+func publishChanToWriter(wg *sync.WaitGroup, readFrom <-chan string, out io.Writer, qCount int, maxLoops int) {
 	defer wg.Done()
-	nbStopped := 0
 	itemsRead := 0
 	currentLoop := 0
 	c := color.New(color.FgBlue).Add(color.Bold)
@@ -300,7 +298,7 @@ func publishChanToWriter(wg *sync.WaitGroup, readFrom <-chan string, stopper <-c
 		if itemsRead%(2*qCount) == 0 {
 			currentLoop++
 			if currentLoop > maxLoops {
-				fmt.Fprintf(out, "Limit reached for the loops. Exiting.")
+				fmt.Fprintf(out, "Limit reached. Exiting. Number of loops set to: %d\n",maxLoops)
 				return
 			}
 			fmt.Fprintf(out, c.Sprintf("Loop (%d/%d)\n", currentLoop, maxLoops))
@@ -319,14 +317,6 @@ func publishChanToWriter(wg *sync.WaitGroup, readFrom <-chan string, stopper <-c
 				fmt.Fprintf(out, "     --> " +v+"\n")
 				fmt.Fprintf(out, "---------------------------\n")
 			}
-		case <- stopper:
-			nbStopped++
-			if nbStopped == 2 {
-				// We are sure we closed the qa and command channels.
-				// The publisher does not need to read from here, at
-				// least for this function.
-				return
-			}
 		}
 	}
 }
@@ -337,15 +327,13 @@ func publishChanToWriter(wg *sync.WaitGroup, readFrom <-chan string, stopper <-c
 func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
 	fullLoop, i, j := 0, 0, 0
 
-	stopper := make(chan string)
-
 	var wg sync.WaitGroup
 	wg.Add(3)
 	nbOfQuestions := qa.GetCount()
 
-	go fanOutChannel(&wg, p.qachan, p.publisher, stopper, "qachan")
-	go publishChanToWriter(&wg, p.publisher, stopper, p.out, nbOfQuestions, p.limit)
-  go fanOutChannel(&wg, p.command, p.publisher, stopper, "command")
+	go fanOutChannel(&wg, p.qachan, p.publisher)
+	go publishChanToWriter(&wg, p.publisher, p.out, nbOfQuestions, p.limit)
+  go fanOutChannel(&wg, p.command, p.publisher)
 
 	var question, answer string
 	s := bufio.NewScanner(p.in)
