@@ -234,20 +234,10 @@ func TestAskQuestionsInUnattendedMode(t *testing.T) {
 		mode:        linear,
 		out:         pw,
 		limit:       10,
-		qachan:	make(chan string),
-		command:	make(chan string),
-		publisher:	make(chan string),
+		qachan:	     make(chan string),
+		command:	   make(chan string),
+		publisher:	 make(chan string),
 	}
-
-	questionsSet := topic.BuildQuestionsSet()
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	go func() {
-		defer wg.Done()
-		AskQuestions(questionsSet, ip)
-		pw.Close()
-	}()
 
 	fmt.Println("    ****************")
 	fmt.Println("Test Ask Question in Linear Mode...")
@@ -261,7 +251,6 @@ func TestAskQuestionsInUnattendedMode(t *testing.T) {
 	separator, _ := regexp.Compile("^-{1,}")
 	nbOfQuestions, _ := regexp.Compile("^Nb of questions:\\s[0-9]{1,}")
 	limitReached, _ := regexp.Compile("^Limit reached. Exiting. Number of loops set to:\\s[0-9]{1,}")
-	questionsCount := questionsSet.GetCount()
 	i := 0
 	var (
 		isAnnounce     bool
@@ -274,11 +263,22 @@ func TestAskQuestionsInUnattendedMode(t *testing.T) {
 		computed       string
 	)
 
+	questionsSet := topic.BuildQuestionsSet()
+	questionsCount := questionsSet.GetCount()
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		AskQuestions(questionsSet, ip)
+		fmt.Println("AskQuestion is over.")
+		pw.Close()
+	}()
+
 	go func() {
 		defer wg.Done()
 		for s.Scan() {
 			text := s.Text()
-			fmt.Printf("Scan succeeded. Text retrieved is '%s'\n", text)
 			isAnnounce = announcement.MatchString(text)
 			isEmpty = emptyLine.MatchString(text)
 			isLoop = loop.MatchString(text)
@@ -289,14 +289,14 @@ func TestAskQuestionsInUnattendedMode(t *testing.T) {
 				expected = questionsSet.questions[i] + "     --> " + questionsSet.answers[i]
 				computed = text
 				if computed != expected {
-					t.Errorf("Check of answers failed. We were expected '%s' but received '%s'\n", expected, computed)
+					t.Errorf("Check of answers failed. Expected '%s' but received '%s'\n", expected, computed)
 				}
 				i = (i + 1) % questionsCount
 			}
 		}
+		fmt.Println("Scan is over.")
 	}()
 	wg.Wait()
-	close(ip.publisher)
 }
 
 /*
