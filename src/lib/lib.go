@@ -279,23 +279,46 @@ func fanOutChannel(wg *sync.WaitGroup, readFrom <-chan string, writeTo chan<- st
 				stopper <- chanName
 				return
 			}
-			writeTo <- v
+			if len(v) != 0 {
+				writeTo <- v
+			}
 		}
 	}
 }
 
 // 
-func name2(wg *sync.WaitGroup, readFrom <-chan string, stopper <-chan string, out io.Writer) {
+func publishChanToWriter(wg *sync.WaitGroup, readFrom <-chan string, stopper <-chan string, out io.Writer, qCount int, maxLoops int) {
 	defer wg.Done()
 	nbStopped := 0
+	itemsRead := 0
+	currentLoop := 0
+	c := color.New(color.FgBlue).Add(color.Bold)
+
+	fmt.Fprintf(out, "Nb of questions: %d\n", qCount)
 
 	for {
+		if itemsRead%(2*qCount) == 0 {
+			currentLoop++
+			if currentLoop > maxLoops {
+				fmt.Fprintf(out, "Limit reached for the loops. Exiting.")
+				return
+			}
+			fmt.Fprintf(out, c.Sprintf("Loop (%d/%d)\n", currentLoop, maxLoops))
+		}
 		select {
 		case v, ok := <- readFrom:
 			if !ok {
 				return
 			}
-			fmt.Fprintf(out, v)
+			itemsRead++
+			switch {
+			case itemsRead%2==1:
+				fmt.Fprintf(out, strconv.Itoa(itemsRead)+"'"+v+"'")
+				// Questions asked. Must publish the answer now.
+			case itemsRead%2==0:
+				fmt.Fprintf(out, "["+strconv.Itoa(itemsRead)+"]     --> '" +v+"'\n")
+				fmt.Fprintf(out, "---------------------------\n")
+			}
 		case <- stopper:
 			nbStopped++
 			if nbStopped == 2 {
@@ -313,19 +336,16 @@ func name2(wg *sync.WaitGroup, readFrom <-chan string, stopper <-chan string, ou
 // parameter object will supply data to refine the questioning.
 func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
 	fullLoop, i, j := 0, 0, 0
-	c := color.New(color.FgBlue).Add(color.Bold)
 
 	stopper := make(chan string)
 
 	var wg sync.WaitGroup
 	wg.Add(3)
+	nbOfQuestions := qa.GetCount()
 
 	go fanOutChannel(&wg, p.qachan, p.publisher, stopper, "qachan")
-	go name2(&wg, p.publisher, stopper, p.out)
+	go publishChanToWriter(&wg, p.publisher, stopper, p.out, nbOfQuestions, p.limit)
   go fanOutChannel(&wg, p.command, p.publisher, stopper, "command")
-
-	nbOfQuestions := qa.GetCount()
-	p.publisher <- fmt.Sprintf("Nb of questions: %d\n", nbOfQuestions)
 
 	var question, answer string
 	s := bufio.NewScanner(p.in)
@@ -333,14 +353,11 @@ func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
 		if j%nbOfQuestions == 0 {
 			fullLoop++
 			if fullLoop > p.limit {
-				p.publisher <- fmt.Sprintf("Limit reached. Exiting. Number of loops set to: %d\n", p.limit)
 				// if the qa chan is closed, then we have to close the others.
 				close(p.qachan)
 				close(p.command)
 				break
 			}
-			p.publisher <- c.Sprintf("Loop (%d/%d)\n", fullLoop, p.limit)
-			time.Sleep(10*time.Millisecond)
 		}
 		if p.mode == random {
 			i = int(rand.Int31n(int32(nbOfQuestions)))
@@ -359,7 +376,7 @@ func AskQuestions(qa QuestionsAnswers, p InterrogationParameters) {
 				p.command <- s.Text()
 			}
 		}
-		p.qachan <- fmt.Sprintf("     --> %s\n", answer)
+		p.qachan <- fmt.Sprintf("%s", answer)
 
 		if p.mode == linear {
 			i = (i + 1) % nbOfQuestions
