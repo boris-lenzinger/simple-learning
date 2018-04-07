@@ -1,7 +1,7 @@
 language: go
 before_install:
   - go get github.com/modocache/gover
-  - go get https://github.com/boris-lenzinger/simple-learning
+  - go get github.com/boris-lenzinger/simple-learning
 script:
   # Vet examines Go source code and reports suspicious construct
   - go vet github.com/boris-lenzinger/simple-learning
