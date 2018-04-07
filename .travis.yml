@@ -1,6 +1,5 @@
 language: go
 before_install:
-  - go get golang.org/x/tools/cmd/vet
   - go get github.com/modocache/gover
   - go get https://github.com/boris-lenzinger/simple-learning
 script:
