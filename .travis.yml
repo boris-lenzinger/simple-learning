@@ -1,10 +1,10 @@
 language: go
 before_install:
   - go get github.com/modocache/gover
-  - go get github.com/boris-lenzinger/simple-learning
+  - go get github.com/boris-lenzinger/simple-learning/src/lib
 script:
   # Vet examines Go source code and reports suspicious construct
-  - go vet github.com/boris-lenzinger/simple-learning
+  - go vet github.com/boris-lenzinger/simple-learning/src/lib
   # Run the unit tests suite
   - go test -v ./...
   # Collect coverage reports
