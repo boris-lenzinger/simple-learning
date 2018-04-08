@@ -1,16 +1,21 @@
 language: go
-before_install:
-  - go get github.com/modocache/gover
-  - go get github.com/boris-lenzinger/simple-learning/src/lib
+go:
+  - 1.5.x
+  - 1.6.x
+  - 1.7.x
+  - 1.8.x
+  - 1.9.x
+  - 1.10.x
+
+go_import_path: github.com/boris-lenzinger/simple-learning/src/lib
+
+install: go install github.com/boris-lenzinger/simple-learning/src/lib
+
 script:
-  # Vet examines Go source code and reports suspicious construct
   - go vet github.com/boris-lenzinger/simple-learning/src/lib
-  # Run the unit tests suite
-  - go test -v ./...
-  # Collect coverage reports
-  - go list -f '{{if len .TestGoFiles}}"go test -coverprofile={{.Dir}}/.coverprofile {{.ImportPath}}"{{end}}' ./... | xargs -i sh -c {}
-  # Merge coverage reports
-  - gover . coverprofile.txt
+  - test -z "$(go fmt ./...)" # fail if not formatted properly
+  - godog -f progress
+  - go test -v -race -coverprofile=coverage.txt -covermode=atomic
+
 after_success:
-  # Send coverage reports to Codecov
-  - bash < (curl -s https://codecov.io/bash) -f coverprofile.txt
+  - bash <(curl -s https://codecov.io/bash)
