@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"lib"
 	"os"
 
 	"github.com/fatih/color"
@@ -40,17 +39,17 @@ where:
 		os.Exit(1)
 	}
 
-	p, err := lib.Parse(os.Args[2:]...)
+	p, err := Parse(os.Args[2:]...)
 	if err != nil {
 		fmt.Errorf("Parse of the command line failed: %v\n", err)
 		os.Exit(1)
 	}
 
-	tpp := lib.TopicParsingParameters{
+	tpp := TopicParsingParameters{
 		TopicAnnounce: "### ",
 		QaSep:         ";",
 	}
-	topic := lib.ParseTopic(file, tpp)
+	topic := ParseTopic(file, tpp)
 	file.Close()
 
 	out := p.GetOutputStream()
@@ -70,6 +69,6 @@ where:
 
 	qa := topic.BuildQuestionsSet(p.GetListOfSubsections()[:]...)
 
-	lib.AskQuestions(qa, p)
+	AskQuestions(qa, p)
 
 }
