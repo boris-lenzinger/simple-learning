@@ -3,12 +3,12 @@ go:
   - 1.9.x
   - 1.10.x
 
-go_import_path: github.com/boris-lenzinger/simple-learning/src/lib
+go_import_path: github.com/boris-lenzinger/simple-learning/src/repeatit
 
-install: go install github.com/boris-lenzinger/simple-learning/src/main
+install: go install github.com/boris-lenzinger/simple-learning/src/repeatit
 
 script:
-  - go vet github.com/boris-lenzinger/simple-learning/src/lib
+  - go vet github.com/boris-lenzinger/simple-learning/src/repeatit
   - test -z "$(go fmt ./...)" # fail if not formatted properly
   - godog -f progress
   - go test -v -race -coverprofile=coverage.txt -covermode=atomic
