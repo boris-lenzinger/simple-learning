@@ -3,8 +3,8 @@ go:
   - 1.9.x
   - 1.10.x
 
-go_import_path: github.com/boris-lenzinger/simple-learning
 go_import_path: github.com/fatih/color
+go_import_path: github.com/boris-lenzinger/simple-learning
 
 install: go install github.com/boris-lenzinger/simple-learning
 
