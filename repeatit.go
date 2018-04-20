@@ -1,4 +1,4 @@
-package repeatit
+package main
 
 import (
 	"fmt"

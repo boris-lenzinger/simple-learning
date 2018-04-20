@@ -1,4 +1,4 @@
-package repeatit
+package main
 
 import (
 	"bufio"
@@ -266,7 +266,7 @@ func TestAskQuestionsInUnattendedAndRandomMode(t *testing.T) {
 	pr, pw := io.Pipe()
 	defer pw.Close()
 	ip := getGenericUnattendedInterrogationParameters()
-  ip.out = pw
+	ip.out = pw
 	ip.mode = random
 
 	fmt.Println("    ****************")
